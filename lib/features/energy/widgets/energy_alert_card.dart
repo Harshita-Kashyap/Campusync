@@ -1,293 +1,119 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../models/energy_alert.dart';
+import '../../../shared/theme/app_colors.dart';
+import '../../../shared/widgets/widgets.dart';
 
-/// Card displaying an individual EnergyAlert with mathematical derivation
-/// and status action buttons (Active, Resolved, Dismissed).
-class EnergyAlertCard extends StatelessWidget {
+/// One energy alert: reason, actual vs expected, impact, and an expandable evidence trail.
+class EnergyAlertCard extends StatefulWidget {
   final EnergyAlert alert;
   final ValueChanged<String>? onStatusChange;
+  const EnergyAlertCard({super.key, required this.alert, this.onStatusChange});
+  @override
+  State<EnergyAlertCard> createState() => _EnergyAlertCardState();
+}
 
-  const EnergyAlertCard({
-    super.key,
-    required this.alert,
-    this.onStatusChange,
-  });
+class _EnergyAlertCardState extends State<EnergyAlertCard> {
+  bool _open = false;
 
-  Color _getStatusColor() {
-    switch (alert.status.toLowerCase()) {
-      case 'active':
-        return const Color(0xFFE53935); // Vivid Crimson Alert
-      case 'resolved':
-        return const Color(0xFF2E7D32); // Eco Forest Green
-      case 'dismissed':
-        return const Color(0xFF757575); // Neutral Slate
-      default:
-        return const Color(0xFFF57C00);
-    }
-  }
-
-  IconData _getStatusIcon() {
-    switch (alert.status.toLowerCase()) {
-      case 'active':
-        return Icons.warning_amber_rounded;
-      case 'resolved':
-        return Icons.check_circle_outline_rounded;
-      case 'dismissed':
-        return Icons.do_not_disturb_on_outlined;
-      default:
-        return Icons.info_outline;
-    }
-  }
+  String _hhmm(DateTime d) => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final statusColor = _getStatusColor();
-    final statusIcon = _getStatusIcon();
+    final pal = context.pal;
+    final t = Theme.of(context).textTheme;
+    final a = widget.alert;
+    final c = pal.of(a.isActive ? Tone.danger : (a.isResolved ? Tone.success : Tone.neutral));
+    final top = math.max(a.actualKwh, a.expectedKwh) * 1.1;
+    final cb = widget.onStatusChange;
 
-    return Card(
-      elevation: alert.isActive ? 2 : 0,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: alert.isActive
-              ? statusColor.withAlpha(120)
-              : theme.colorScheme.outlineVariant.withAlpha(60),
-          width: alert.isActive ? 1.5 : 1.0,
+    return AppCard(
+      accent: a.isActive ? pal.danger : null,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(color: c.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(13)),
+            child: Icon(Icons.bolt_outlined, color: c),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(a.roomName, style: t.titleSmall),
+              Text('Raised at ${_hhmm(a.timestamp)}', style: t.bodySmall),
+            ]),
+          ),
+          StatusBadge.status(a.status),
+        ]),
+        const SizedBox(height: 12),
+        Text(a.reason, style: t.bodyMedium),
+        const SizedBox(height: 16),
+        LoadBar(actual: a.actualKwh, expected: a.expectedKwh, max: top, over: a.isActive),
+        const SizedBox(height: 6),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('Expected ${a.expectedKwh.toStringAsFixed(2)} kWh', style: t.bodySmall),
+          Text('Actual ${a.actualKwh.toStringAsFixed(2)} kWh',
+              style: t.bodySmall?.copyWith(color: a.isActive ? pal.danger : pal.muted, fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(child: _Figure(label: 'Excess', value: '+${a.excessKwh.toStringAsFixed(2)} kWh')),
+          Expanded(child: _Figure(label: 'Cost', value: '₹${a.estimatedCost.toStringAsFixed(0)}')),
+          Expanded(child: _Figure(label: 'CO₂e', value: '${a.estimatedCo2Kg.toStringAsFixed(1)} kg')),
+        ]),
+        const SizedBox(height: 6),
+        TextButton.icon(
+          onPressed: () => setState(() => _open = !_open),
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4), alignment: Alignment.centerLeft),
+          icon: AnimatedRotation(turns: _open ? 0.5 : 0, duration: const Duration(milliseconds: 250), child: const Icon(Icons.expand_more, size: 20)),
+          label: const Text('How this was worked out'),
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header Row: Room name & status chip
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: statusColor.withAlpha(25),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(statusIcon, color: statusColor, size: 20),
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          alert.roomName,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          'ID: ${alert.id} • ${_formatTime(alert.timestamp)}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: theme.colorScheme.outline,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withAlpha(25),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: statusColor.withAlpha(90)),
-                  ),
-                  child: Text(
-                    alert.status.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: statusColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 14),
-
-            // Plain Language Reason Box
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withAlpha(60),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.psychology_outlined,
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      alert.reason,
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.4,
-                        color: theme.colorScheme.onSurface,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
-            // Quantitative Metrics Triplets
-            Row(
-              children: [
-                Expanded(
-                  child: _MetricPill(
-                    label: 'Excess kWh',
-                    value: '+${alert.excessKwh.toStringAsFixed(2)}',
-                    subtext: '${alert.actualKwh.toStringAsFixed(1)} vs ${alert.expectedKwh.toStringAsFixed(1)}',
-                    color: Colors.amber.shade800,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _MetricPill(
-                    label: 'Cost Leak',
-                    value: '₹${alert.estimatedCost.toStringAsFixed(2)}',
-                    subtext: '@ ₹${alert.tariffPerKwh.toStringAsFixed(0)}/kWh',
-                    color: Colors.deepOrange.shade700,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _MetricPill(
-                    label: 'Emissions',
-                    value: '${alert.estimatedCo2Kg.toStringAsFixed(2)} kg',
-                    subtext: 'CO₂ Equivalent',
-                    color: Colors.teal.shade800,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 14),
-
-            // Action Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (alert.isActive) ...[
-                  OutlinedButton.icon(
-                    onPressed: onStatusChange != null
-                        ? () => onStatusChange!('dismissed')
-                        : null,
-                    icon: const Icon(Icons.close_rounded, size: 16),
-                    label: const Text('Dismiss'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: onStatusChange != null
-                        ? () => onStatusChange!('resolved')
-                        : null,
-                    icon: const Icon(Icons.check_rounded, size: 16),
-                    label: const Text('Mark Resolved'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF2E7D32),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    ),
-                  ),
-                ] else ...[
-                  TextButton.icon(
-                    onPressed: onStatusChange != null
-                        ? () => onStatusChange!('active')
-                        : null,
-                    icon: const Icon(Icons.restart_alt_rounded, size: 16),
-                    label: const Text('Re-open Alert'),
-                  ),
-                ],
-              ],
-            ),
-          ],
+        AnimatedSize(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _open
+              ? Padding(padding: const EdgeInsets.only(top: 8, bottom: 4), child: ExplainSteps(steps: energyEvidence(a)))
+              : const SizedBox(width: double.infinity),
         ),
-      ),
+        const SizedBox(height: 8),
+        Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+          if (a.isActive) ...[
+            OutlinedButton.icon(
+              onPressed: cb == null ? null : () => cb('dismissed'),
+              icon: const Icon(Icons.close_rounded, size: 18),
+              label: const Text('Dismiss'),
+              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: cb == null ? null : () => cb('resolved'),
+              icon: const Icon(Icons.check_rounded, size: 18),
+              label: const Text('Mark resolved'),
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            ),
+          ] else
+            TextButton.icon(
+              onPressed: cb == null ? null : () => cb('active'),
+              icon: const Icon(Icons.restart_alt_rounded, size: 18),
+              label: const Text('Re-open'),
+            ),
+        ]),
+      ]),
     );
-  }
-
-  String _formatTime(DateTime dt) {
-    final hour = dt.hour.toString().padLeft(2, '0');
-    final minute = dt.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
   }
 }
 
-class _MetricPill extends StatelessWidget {
-  final String label;
-  final String value;
-  final String subtext;
-  final Color color;
-
-  const _MetricPill({
-    required this.label,
-    required this.value,
-    required this.subtext,
-    required this.color,
-  });
+class _Figure extends StatelessWidget {
+  final String label, value;
+  const _Figure({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-      decoration: BoxDecoration(
-        color: color.withAlpha(20),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withAlpha(50)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: theme.colorScheme.onSurface,
-            ),
-          ),
-          Text(
-            subtext,
-            style: TextStyle(
-              fontSize: 9,
-              color: theme.colorScheme.outline,
-            ),
-          ),
-        ],
-      ),
-    );
+    final t = Theme.of(context).textTheme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: t.bodySmall),
+      Text(value, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+    ]);
   }
 }

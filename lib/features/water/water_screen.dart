@@ -20,49 +20,84 @@ class _WaterScreenState extends State<WaterScreen> {
   @override
   Widget build(BuildContext context) {
     final repo = RepositoryScope.of(context);
+    final pal = context.pal;
+    final t = Theme.of(context).textTheme;
     final all = repo.getIncidents();
-    final items = all
-        .where((i) => (_status == 'all' || i.status == _status) && (_sev == 'all' || i.severity == _sev))
-        .toList()
+    final items = all.where((i) => (_status == 'all' || i.status == _status) && (_sev == 'all' || i.severity == _sev)).toList()
       ..sort((a, b) => b.reportedAt.compareTo(a.reportedAt));
     final current = WaterService(repo).getEstimatedWaterLossLitres();
+    int count(String s) => s == 'all' ? all.length : all.where((i) => i.status == s).length;
 
     return ModuleScaffold(
       title: 'Water',
-      actions: const [RoleSwitchButton()],
-      body: ListView(padding: const EdgeInsets.all(20), children: [
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.water_drop, color: AppColors.forest),
-            title: Text('Estimated current loss: ~${current.toStringAsFixed(0)} L'),
-            subtitle: const Text('Open + in-progress incidents only. Estimates from reported rate × duration.'),
+      actions: [
+        PopupMenuButton<String>(
+          tooltip: 'Filter by severity',
+          icon: Badge(isLabelVisible: _sev != 'all', smallSize: 8, child: const Icon(Icons.filter_list)),
+          onSelected: (v) => setState(() => _sev = v),
+          itemBuilder: (_) => [
+            for (final o in const ['all', ...waterSeverities])
+              CheckedPopupMenuItem<String>(value: o, checked: _sev == o, child: Text(o == 'all' ? 'Any severity' : prettyStatus(o))),
+          ],
+        ),
+        const ThemeToggleButton(),
+        const RoleSwitchButton(),
+        const SizedBox(width: 4),
+      ],
+      body: PageBody(children: [
+        Reveal(
+          child: AppCard(
+            padding: const EdgeInsets.all(20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Estimated loss right now', style: t.bodySmall),
+              const SizedBox(height: 4),
+              AnimatedNumber(value: current, format: (v) => '~${fmtNum(v)} L', style: t.headlineMedium?.copyWith(color: pal.info)),
+              const SizedBox(height: 6),
+              Text('Open and in-progress incidents only. Rate × hours, as reported.', style: t.bodySmall),
+            ]),
           ),
         ),
-        const SectionHeading('Filter'),
-        _chips('Status', const ['all', 'open', 'in_progress', 'resolved', 'dismissed'], _status, (v) => setState(() => _status = v)),
-        const SizedBox(height: 8),
-        _chips('Severity', const ['all', ...waterSeverities], _sev, (v) => setState(() => _sev = v)),
-        const SectionHeading('Incidents'),
+        const SizedBox(height: 16),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (final s in const ['all', 'open', 'in_progress', 'resolved', 'dismissed'])
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text('${s == 'all' ? 'All' : prettyStatus(s)} ${count(s)}'),
+                  selected: _status == s,
+                  onSelected: (_) => setState(() => _status = s),
+                ),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 16),
         if (items.isEmpty)
-          Card(child: EmptyState(title: all.isEmpty ? 'No incidents reported' : 'No incidents match these filters'))
+          AppCard(child: EmptyState(title: all.isEmpty ? 'No incidents reported' : 'No incidents match these filters', icon: Icons.water_drop_outlined))
         else
-          for (final i in items)
+          for (var i = 0; i < items.length; i++)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Card(
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: () => _detail(context, repo, i),
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(i.locationName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      Text('${labelOf(i.issueType)} · ${timeAgo(i.reportedAt)}', style: const TextStyle(color: AppColors.muted, fontSize: 13)),
-                      Text('~${i.estimatedLitresLost.toStringAsFixed(0)} L lost (estimate)', style: const TextStyle(fontSize: 13)),
-                      const SizedBox(height: 8),
-                      Wrap(spacing: 6, runSpacing: 6, children: [StatusBadge.priority(i.severity), StatusBadge.status(i.status)]),
-                    ]),
-                  ),
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Reveal(
+                key: ValueKey('${items[i].id}-$_status-$_sev'),
+                delay: stagger(i),
+                child: AppCard(
+                  onTap: () => _detail(context, repo, items[i]),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(items[i].locationName, style: t.titleSmall),
+                        const SizedBox(height: 2),
+                        Text('${prettyStatus(labelOf(items[i].issueType))}, ${timeAgo(items[i].reportedAt)}', style: t.bodySmall),
+                        const SizedBox(height: 2),
+                        Text('~${fmtNum(items[i].estimatedLitresLost)} L lost (estimate)', style: t.bodyMedium),
+                        const SizedBox(height: 10),
+                        Wrap(spacing: 6, runSpacing: 6, children: [StatusBadge.priority(items[i].severity), StatusBadge.status(items[i].status)]),
+                      ]),
+                    ),
+                    Icon(Icons.chevron_right, color: pal.muted),
+                  ]),
                 ),
               ),
             ),
@@ -70,53 +105,34 @@ class _WaterScreenState extends State<WaterScreen> {
     );
   }
 
-  Widget _chips(String label, List<String> opts, String sel, ValueChanged<String> on) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-          Wrap(spacing: 6, children: [
-            for (final o in opts) ChoiceChip(label: Text(labelOf(o)), selected: sel == o, onSelected: (_) => on(o)),
-          ]),
-        ],
-      );
-
   void _detail(BuildContext context, AppRepository repo, WaterIncident i) {
     final messenger = ScaffoldMessenger.of(context);
-    final options = ['open', 'in_progress', 'resolved', 'dismissed'].where((s) => s != i.status);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(i.locationName, style: Theme.of(ctx).textTheme.titleLarge),
-            const SizedBox(height: 4),
-            Wrap(spacing: 6, children: [StatusBadge.priority(i.severity), StatusBadge.status(i.status)]),
-            const SizedBox(height: 12),
-            Text(i.description),
-            const SizedBox(height: 8),
-            Text('${labelOf(i.issueType)} · ${i.estimatedLitresPerHour.toStringAsFixed(0)} L/h × ${i.estimatedDurationHours.toStringAsFixed(1)} h '
-                '= ~${i.estimatedLitresLost.toStringAsFixed(0)} L (estimate)', style: const TextStyle(color: AppColors.muted)),
-            Text(i.status == 'open' || i.status == 'in_progress' ? 'Counts toward current loss.' : 'Not counted in current loss.',
-                style: const TextStyle(color: AppColors.muted, fontSize: 12)),
-            const SizedBox(height: 16),
-            const Text('Update status', style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final s in options)
-                FilledButton.tonal(
-                  onPressed: () async {
-                    Navigator.pop(ctx);
-                    await WaterService(repo).updateIncidentStatus(i.id, s);
-                    messenger.showSnackBar(SnackBar(content: Text('${i.locationName} marked ${labelOf(s)}')));
-                  },
-                  child: Text(labelOf(s)),
-                ),
-            ]),
-          ]),
-        ),
-      ),
+    final options = ['open', 'in_progress', 'resolved', 'dismissed'].where((s) => s != i.status).toList();
+    showAppSheet<void>(
+      context,
+      builder: (ctx) {
+        final t = Theme.of(ctx).textTheme;
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(i.locationName, style: t.titleLarge),
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, runSpacing: 6, children: [StatusBadge.priority(i.severity), StatusBadge.status(i.status)]),
+          const SizedBox(height: 12),
+          Text(i.description, style: t.bodyLarge),
+          const SizedBox(height: 24),
+          Text('How the loss was estimated', style: t.titleMedium),
+          const SizedBox(height: 14),
+          ExplainSteps(steps: waterEvidence(i)),
+          const SizedBox(height: 24),
+          StatusActions(
+            options: options,
+            onPick: (s) async {
+              Navigator.pop(ctx);
+              await WaterService(repo).updateIncidentStatus(i.id, s);
+              messenger.showSnackBar(SnackBar(content: Text('${i.locationName} marked ${prettyStatus(s).toLowerCase()}')));
+            },
+          ),
+        ]);
+      },
     );
   }
 }

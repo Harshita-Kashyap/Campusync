@@ -1,439 +1,225 @@
 import 'package:flutter/material.dart';
 import '../../services/energy_service.dart';
-import 'widgets/energy_metric_card.dart';
+import '../../shared/theme/app_colors.dart';
+import '../../shared/widgets/widgets.dart';
+import '../dashboard/role_switch_button.dart';
 import 'widgets/energy_alert_card.dart';
-import 'widgets/room_energy_tile.dart';
 import 'widgets/energy_quick_chart.dart';
+import 'widgets/room_energy_tile.dart';
 import 'widgets/timetable_schedule_view.dart';
 
-/// Person 2 Owned Screen: EcoNudge AI — Energy Intelligence Dashboard.
-///
-/// Features:
-/// - Real-time aggregated campus impact metrics (kWh excess, INR cost, CO2e).
-/// - Anomaly detection feed with plain-language explanations.
-/// - Live sub-meter telemetry comparison against timetable baseline.
-/// - 10-Class Timetable Explorer demonstrating timetable-informed baselines.
-/// - Custom painted comparative audit chart.
-/// - Alert status actions: Active, Resolved, Dismissed.
+/// Energy: timetable-aware anomaly detection. Rule-based and explainable.
 class EnergyScreen extends StatefulWidget {
   final EnergyService? service;
-
-  const EnergyScreen({
-    super.key,
-    this.service,
-  });
-
+  const EnergyScreen({super.key, this.service});
   @override
   State<EnergyScreen> createState() => _EnergyScreenState();
 }
 
 class _EnergyScreenState extends State<EnergyScreen> with SingleTickerProviderStateMixin {
   late final EnergyService _service;
-  late final TabController _tabController;
-
-  String _alertFilter = 'active'; // 'all', 'active', 'resolved', 'dismissed'
+  late final TabController _tabs;
+  String _filter = 'active'; // active | resolved | all
 
   @override
   void initState() {
     super.initState();
     _service = widget.service ?? EnergyService();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabs = TabController(length: 4, vsync: this);
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabs.dispose();
     super.dispose();
   }
 
+  void _say(String msg) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
+    final pal = context.pal;
+    final t = Theme.of(context).textTheme;
     return AnimatedBuilder(
       animation: _service,
-      builder: (context, _) {
-        final totalExcess = _service.getEstimatedExcessKwh();
-        final totalCost = _service.getEstimatedCost();
-        final totalCo2 = _service.getEstimatedCo2Kg();
-        final activeAlerts = _service.getActiveAlerts();
-
-        return Scaffold(
-          appBar: AppBar(
-            elevation: 0,
-            scrolledUnderElevation: 2,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.bolt_rounded, color: Color(0xFF2E7D32), size: 24),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'EcoNudge AI',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2E7D32).withAlpha(20),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        'Person 2',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2E7D32),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                Text(
-                  'Campus Energy Wastage & Timetable Intelligence',
-                  style: TextStyle(fontSize: 11, color: theme.colorScheme.outline),
+      builder: (context, _) => Scaffold(
+        appBar: AppBar(
+          title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Energy'),
+            Text('Timetable-aware anomaly detection', style: t.bodySmall),
+          ]),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.sync_rounded),
+              tooltip: 'Refresh simulated telemetry',
+              onPressed: () {
+                _service.refreshTelemetry();
+                _say('Telemetry refreshed (simulated)');
+              },
+            ),
+            const ThemeToggleButton(),
+            const RoleSwitchButton(),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded),
+              onSelected: (v) {
+                if (v == 'reset') {
+                  _service.resetToDefaults();
+                  _say('Sample data reset');
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'reset',
+                  child: Row(children: [Icon(Icons.restart_alt_rounded, size: 18), SizedBox(width: 8), Text('Reset sample data')]),
                 ),
               ],
             ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.sync_rounded),
-                tooltip: 'Simulate Telemetry Refresh',
-                onPressed: () {
-                  _service.refreshTelemetry();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('⚡ Smart sub-meter telemetry synchronized!'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                },
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert_rounded),
-                onSelected: (value) {
-                  if (value == 'reset') {
-                    _service.resetToDefaults();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Reset fixtures to defaults.')),
-                    );
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'reset',
-                    child: Row(
-                      children: [
-                        Icon(Icons.restart_alt_rounded, size: 18),
-                        SizedBox(width: 8),
-                        Text('Reset Sample Fixtures'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            bottom: TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-              tabs: [
-                Tab(
-                  icon: const Icon(Icons.warning_amber_rounded, size: 18),
-                  text: 'Alerts (${activeAlerts.length})',
-                ),
-                const Tab(
-                  icon: Icon(Icons.meeting_room_outlined, size: 18),
-                  text: '10-Room Audit',
-                ),
-                const Tab(
-                  icon: Icon(Icons.calendar_month_outlined, size: 18),
-                  text: '10 Timetables',
-                ),
-                const Tab(
-                  icon: Icon(Icons.bar_chart_rounded, size: 18),
-                  text: 'Audit Chart',
-                ),
-              ],
-            ),
-          ),
-          body: TabBarView(
-            controller: _tabController,
-            children: [
-              // TAB 1: ALERTS & OVERVIEW
-              _buildAlertsTab(totalExcess, totalCost, totalCo2, activeAlerts),
-
-              // TAB 2: ROOM AUDIT (10 Rooms)
-              _buildRoomAuditTab(),
-
-              // TAB 3: 10 TIMETABLES EXPLORER
-              _buildTimetableTab(),
-
-              // TAB 4: AUDIT CHART
-              _buildChartTab(),
+          ],
+          bottom: TabBar(
+            controller: _tabs,
+            tabAlignment: TabAlignment.fill,
+            indicatorSize: TabBarIndicatorSize.label,
+            labelColor: pal.ink,
+            unselectedLabelColor: pal.muted,
+            indicatorColor: pal.brand,
+            dividerColor: pal.line,
+            labelStyle: t.labelLarge,
+            tabs: [
+              Tab(text: 'Alerts (${_service.getActiveAlerts().length})'),
+              const Tab(text: 'Rooms'),
+              const Tab(text: 'Timetable'),
+              const Tab(text: 'Chart'),
             ],
           ),
-        );
-      },
-    );
-  }
-
-  Widget _buildAlertsTab(
-    double totalExcess,
-    double totalCost,
-    double totalCo2,
-    List<dynamic> activeAlerts,
-  ) {
-    final allAlerts = _service.getAlerts();
-    final filteredAlerts = _alertFilter == 'all'
-        ? allAlerts
-        : allAlerts.where((a) => a.status.toLowerCase() == _alertFilter).toList();
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Banner Impact Metrics Grid
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth > 600;
-              return GridView.count(
-                crossAxisCount: isWide ? 4 : 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: isWide ? 1.4 : 1.15,
-                children: [
-                  EnergyMetricCard(
-                    title: 'Active Wastage',
-                    value: '${totalExcess.toStringAsFixed(2)} kWh',
-                    subtitle: 'Excess above timetable baseline',
-                    icon: Icons.electric_bolt_rounded,
-                    accentColor: const Color(0xFFE53935),
-                    badge: '${activeAlerts.length} Anomaly',
-                  ),
-                  EnergyMetricCard(
-                    title: 'Rupee Cost Leak',
-                    value: '₹${totalCost.toStringAsFixed(2)}',
-                    subtitle: 'Calculated @ ₹${_service.tariffPerKwh}/kWh',
-                    icon: Icons.currency_rupee_rounded,
-                    accentColor: const Color(0xFFF57C00),
-                  ),
-                  EnergyMetricCard(
-                    title: 'Excess Emissions',
-                    value: '${totalCo2.toStringAsFixed(2)} kg',
-                    subtitle: '@ 0.82 kg CO₂e / kWh',
-                    icon: Icons.cloud_outlined,
-                    accentColor: const Color(0xFF00897B),
-                  ),
-                  EnergyMetricCard(
-                    title: 'Active Facilities',
-                    value: '10 Zones',
-                    subtitle: 'Real-time sensor simulated',
-                    icon: Icons.domain_rounded,
-                    accentColor: const Color(0xFF1E88E5),
-                    badge: '100% Offline',
-                  ),
-                ],
-              );
-            },
-          ),
-
-          const SizedBox(height: 20),
-
-          // Alert Filter Chips Row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Energy Anomaly Log',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              Row(
-                children: [
-                  _buildFilterChip('active', 'Active'),
-                  const SizedBox(width: 6),
-                  _buildFilterChip('resolved', 'Resolved'),
-                  const SizedBox(width: 6),
-                  _buildFilterChip('all', 'All'),
-                ],
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // Alerts List or Empty State
-          if (filteredAlerts.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(32),
-              alignment: Alignment.center,
-              child: Column(
-                children: [
-                  Icon(Icons.eco_rounded, size: 48, color: Colors.green.shade400),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'No alerts in this view',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'All campus spaces are currently operating within rated timetable baselines.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
-            )
-          else
-            ...filteredAlerts.map(
-              (alert) => EnergyAlertCard(
-                alert: alert,
-                onStatusChange: (newStatus) {
-                  _service.updateAlertStatus(alert.id, newStatus);
-                },
-              ),
-            ),
-        ],
+        ),
+        body: TabBarView(controller: _tabs, children: [_alertsTab(context), _roomsTab(context), _timetableTab(context), _chartTab(context)]),
       ),
     );
   }
 
-  Widget _buildFilterChip(String value, String label) {
-    final isSelected = _alertFilter == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (val) {
-        if (val) setState(() => _alertFilter = value);
-      },
-      labelStyle: TextStyle(
-        fontSize: 11,
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+  Widget _alertsTab(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final all = _service.getAlerts();
+    final list = _filter == 'all' ? all : all.where((a) => a.status.toLowerCase() == _filter).toList();
+    final style = t.titleLarge?.copyWith(fontWeight: FontWeight.w800);
+
+    return PageBody(children: [
+      Reveal(
+        child: AppCard(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          child: IntrinsicHeight(
+            child: Row(children: [
+              _Summary(label: 'Above baseline',
+                  child: AnimatedNumber(value: _service.getEstimatedExcessKwh(), format: (v) => '${fmtNum(v, 1)} kWh', style: style)),
+              VerticalDivider(color: context.pal.line, width: 1),
+              _Summary(label: 'Cost, estimate',
+                  child: AnimatedNumber(value: _service.getEstimatedCost(), format: (v) => '₹${fmtNum(v)}', style: style)),
+              VerticalDivider(color: context.pal.line, width: 1),
+              _Summary(label: 'CO₂e, estimate',
+                  child: AnimatedNumber(value: _service.getEstimatedCo2Kg(), format: (v) => '${fmtNum(v, 1)} kg', style: style)),
+            ]),
+          ),
+        ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-    );
+      const SizedBox(height: 8),
+      Text('Active alerts only. ₹${_service.tariffPerKwh.toStringAsFixed(0)}/kWh, ${_service.co2KgPerKwh} kg CO₂e/kWh.', style: t.bodySmall),
+      const SizedBox(height: 16),
+      SizedBox(
+        width: double.infinity,
+        child: SegmentedButton<String>(
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(value: 'active', label: Text('Active')),
+            ButtonSegment(value: 'resolved', label: Text('Resolved')),
+            ButtonSegment(value: 'all', label: Text('All')),
+          ],
+          selected: {_filter},
+          onSelectionChanged: (s) => setState(() => _filter = s.first),
+        ),
+      ),
+      const SizedBox(height: 16),
+      if (list.isEmpty)
+        const AppCard(child: EmptyState(title: 'No alerts here', message: 'Every room is within its timetable baseline.', icon: Icons.eco_outlined))
+      else
+        for (var i = 0; i < list.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Reveal(
+              key: ValueKey('${list[i].id}-$_filter'),
+              delay: stagger(i),
+              child: EnergyAlertCard(alert: list[i], onStatusChange: (s) => _service.updateAlertStatus(list[i].id, s)),
+            ),
+          ),
+    ]);
   }
 
-  Widget _buildRoomAuditTab() {
+  Widget _roomsTab(BuildContext context) {
     final readings = _service.getRoomReadings();
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2E7D32).withAlpha(15),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFF2E7D32).withAlpha(40)),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.info_outline, size: 18, color: Color(0xFF2E7D32)),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Live comparison of actual sub-meter telemetry against dynamic baselines dictated by the class timetables.',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF2E7D32)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          ...readings.map(
-            (reading) => RoomEnergyTile(
-              reading: reading,
+    return PageBody(children: [
+      Text('Actual draw against what the timetable expects. Tap a flagged room to raise an alert.', style: Theme.of(context).textTheme.bodySmall),
+      const SizedBox(height: 14),
+      for (var i = 0; i < readings.length; i++)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Reveal(
+            delay: stagger(i, 40),
+            child: RoomEnergyTile(
+              reading: readings[i],
               onTap: () {
-                if (reading.hasWastageAnomaly) {
-                  _service.evaluateReading(reading);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Evaluated alert for ${reading.roomName}'),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
+                if (readings[i].hasWastageAnomaly) {
+                  _service.evaluateReading(readings[i]);
+                  _say('Alert evaluated for ${readings[i].roomName}');
                 }
               },
             ),
           ),
-        ],
-      ),
-    );
+        ),
+    ]);
   }
 
-  Widget _buildTimetableTab() {
-    final classes = _service.getAllClasses();
+  Widget _timetableTab(BuildContext context) => PageBody(children: [
+        Text('When a class is away in a shared lab, its home room is expected to be empty, so the baseline drops.',
+            style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 14),
+        TimetableScheduleView(classes: _service.getAllClasses()),
+      ]);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Academic Timetable Matrix (10 Classes)',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Explore scheduled courses across AI&DS and CSE departments. Notice how slots in shared labs (Lab 220 A+B, IBM 320) dynamically reduce the expected energy consumption of home classrooms.',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-          const SizedBox(height: 16),
-          TimetableScheduleView(classes: classes),
-        ],
-      ),
-    );
-  }
+  Widget _chartTab(BuildContext context) => PageBody(children: [
+        EnergyQuickChart(readings: _service.getRoomReadings()),
+        SectionHeading('How alerts are decided', trailing: StatusBadge.rules()),
+        AppCard(
+          child: ExplainSteps(steps: [
+            const ExplainStep(icon: Icons.calendar_month_outlined, title: 'The timetable sets the expectation',
+                detail: 'A vacant room is expected to draw about 0.20 kWh, a lecture 1.9 to 2.0 kWh, a computer lab 4.8 kWh.', tone: Tone.info),
+            const ExplainStep(icon: Icons.speed_outlined, title: 'The sub-meter gives the actual', detail: 'Simulated readings in this demo.'),
+            const ExplainStep(icon: Icons.flag_outlined, title: 'A simple rule flags it',
+                detail: 'Actual is more than 0.35 kWh above expected, and the excess is over 0.40 kWh.', tone: Tone.warning),
+            ExplainStep(icon: Icons.currency_rupee, title: 'Impact follows from the excess',
+                detail: 'Cost = excess × ₹${_service.tariffPerKwh.toStringAsFixed(0)}/kWh. Emissions = excess × ${_service.co2KgPerKwh} kg CO₂e/kWh.',
+                tone: Tone.danger),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        Text('No black box: every alert can be traced back to these four steps.', style: Theme.of(context).textTheme.bodySmall),
+      ]);
+}
 
-  Widget _buildChartTab() {
-    final readings = _service.getRoomReadings();
+class _Summary extends StatelessWidget {
+  final String label;
+  final Widget child;
+  const _Summary({required this.label, required this.child});
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          EnergyQuickChart(readings: readings),
-          const SizedBox(height: 20),
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: const Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Explainable Anomaly Logic',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    '1. Baseline Energy = Occupancy Status (from Timetable) × Room Power Profile.\n'
-                    '2. Unscheduled Room baseline = 0.20 kWh (idle standby).\n'
-                    '3. Scheduled Lecture baseline = 1.90 – 2.00 kWh (60 students + projector + fans).\n'
-                    '4. Computer Lab session = 4.80 kWh (40–60 desktop workstations + ACs).\n'
-                    '5. Anomaly Rule: If Actual > (Baseline + 0.35 kWh buffer) and Excess > 0.40 kWh → Flag Anomaly.\n'
-                    '6. Impact Formula:\n'
-                    '   • excessKwh = max(0, actualKwh - expectedKwh)\n'
-                    '   • estimatedCost = excessKwh × ₹8.00\n'
-                    '   • estimatedCo2Kg = excessKwh × 0.82 kg CO₂e',
-                    style: TextStyle(fontSize: 12, height: 1.5),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            FittedBox(fit: BoxFit.scaleDown, child: child),
+            const SizedBox(height: 2),
+            Text(label, style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
+          ]),
+        ),
+      );
 }

@@ -4,37 +4,75 @@ import '../../services/impact_service.dart';
 import '../../shared/theme/app_colors.dart';
 import '../../shared/widgets/widgets.dart';
 
-/// Impact / Methodology: separate units, formula, scope for every metric.
+/// Impact and method: what each number means, how it is computed, and where AI is (and is not) used.
 class ImpactScreen extends StatelessWidget {
   const ImpactScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     final m = ImpactService.compute(RepositoryScope.of(context));
-    Widget row(String name, String value, String how) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Card(
-            child: ListTile(
-              title: Text('$name: $value', style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(how),
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Impact & methodology'), actions: const [ThemeToggleButton(), SizedBox(width: 4)]),
+      body: SafeArea(
+        child: PageBody(children: [
+          const DemoNote(),
+          const SizedBox(height: 4),
+          Text('Units are never combined into one score.', style: t.bodySmall),
+          const SectionHeading('How the system decides'),
+          Reveal(
+            child: AppCard(
+              child: ExplainSteps(steps: const [
+                ExplainStep(icon: Icons.photo_camera_outlined, title: 'AI reads the leak photo',
+                    detail: 'A vision model suggests type, severity and litres per hour. The student confirms or edits.'),
+                ExplainStep(icon: Icons.rule, title: 'Rules score and rank',
+                    detail: 'Energy alerts, the priority queue and suggested actions use plain, readable rules.', tone: Tone.info),
+                ExplainStep(icon: Icons.fact_check_outlined, title: 'Evidence on every item',
+                    detail: 'Tap any queue item or alert to see the steps behind it.', tone: Tone.success),
+                ExplainStep(icon: Icons.verified_outlined, title: 'Honest labels',
+                    detail: 'Saved samples and fallbacks are never shown as live AI.', tone: Tone.warning),
+              ]),
             ),
           ),
-        );
-    return Scaffold(
-      appBar: AppBar(title: const Text('Impact & methodology')),
-      body: SafeArea(
-        child: ListView(padding: const EdgeInsets.all(20), children: [
-          const Text(demoLabel, style: TextStyle(color: AppColors.muted)),
+          const SectionHeading('Energy', trailing: _Sdg('SDG 7, 13')),
+          _Metric('Excess energy', '${fmtNum(m.excessKwh, 1)} kWh', 'Sum of max(0, actual − expected) over active alerts.'),
+          _Metric('Cost', '₹${fmtNum(m.energyCost)}', 'Excess kWh × tariff per kWh.'),
+          _Metric('Emissions', '${fmtNum(m.co2Kg, 1)} kg CO₂e', 'Excess kWh × CO₂ factor per kWh.'),
+          const SectionHeading('Water', trailing: _Sdg('SDG 6')),
+          _Metric('Current loss', '${fmtNum(m.waterActiveLossLitres)} L', 'Litres per hour × hours, open and in-progress incidents only.'),
+          _Metric('Historical loss', '${fmtNum(m.waterHistoricalLossLitres)} L', 'Same formula including resolved incidents. Dismissed are excluded.'),
+          const SectionHeading('Paperless', trailing: _Sdg('SDG 12')),
+          _Metric('Pages avoided', fmtNum(m.pagesAvoided), 'Sum of declared per-submission estimates. A counterfactual, not verified.'),
+        ]),
+      ),
+    );
+  }
+}
+
+class _Sdg extends StatelessWidget {
+  final String text;
+  const _Sdg(this.text);
+  @override
+  Widget build(BuildContext context) => Text(text, style: Theme.of(context).textTheme.bodySmall);
+}
+
+class _Metric extends StatelessWidget {
+  final String name, value, how;
+  const _Metric(this.name, this.value, this.how);
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text(name, style: t.titleSmall)),
+            Text(value, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          ]),
           const SizedBox(height: 4),
-          const Text('Units are never combined into a single score.'),
-          const SectionHeading('Energy (SDG 7, 13)'),
-          row('Estimated excess energy', '${m.excessKwh.toStringAsFixed(1)} kWh', 'Σ max(0, actual − expected) over active alerts.'),
-          row('Estimated cost', '₹${m.energyCost.toStringAsFixed(0)}', 'excess kWh × tariff per kWh.'),
-          row('Estimated emissions', '${m.co2Kg.toStringAsFixed(1)} kg CO₂e', 'excess kWh × CO₂ factor per kWh.'),
-          const SectionHeading('Water (SDG 6)'),
-          row('Estimated current loss', '${m.waterActiveLossLitres.toStringAsFixed(0)} L', 'litres/hour × hours, open + in-progress incidents only.'),
-          row('Historical estimated loss', '${m.waterHistoricalLossLitres.toStringAsFixed(0)} L', 'Same formula, including resolved incidents; dismissed excluded.'),
-          const SectionHeading('Paperless (SDG 12)'),
-          row('Estimated pages avoided', '${m.pagesAvoided}', 'Sum of declared per-submission estimates (counterfactual, not verified).'),
+          Text(how, style: t.bodySmall),
         ]),
       ),
     );

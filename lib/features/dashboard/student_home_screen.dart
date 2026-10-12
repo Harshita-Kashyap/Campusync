@@ -13,41 +13,67 @@ class StudentHomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final repo = RepositoryScope.of(context);
     final m = ImpactService.compute(repo);
-    final mine = repo.getIncidents().reversed.take(3).toList();
+    final recent = repo.getIncidents().reversed.take(3).toList();
+    final pal = context.pal;
+    final t = Theme.of(context).textTheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Campusync'), actions: const [RoleSwitchButton()]),
+      appBar: AppBar(title: const Text('Campusync'), actions: const [ThemeToggleButton(), RoleSwitchButton(), SizedBox(width: 4)]),
       body: SafeArea(
-        child: ListView(padding: const EdgeInsets.all(20), children: [
-          Text('Your campus, a little better.', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, color: AppColors.forest)),
-          const SizedBox(height: 16),
-          FilledButton.icon(onPressed: () => onOpenTab(1), icon: const Icon(Icons.add), label: const Text('Report a problem')),
-          const SectionHeading('Campus snapshot'),
-          const Text(demoLabel, style: TextStyle(fontSize: 12, color: AppColors.muted)),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 156,
-            child: Row(children: [
-              Expanded(child: MetricTile(icon: Icons.water_drop, label: 'Est. water loss (current)', value: '${m.waterActiveLossLitres.toStringAsFixed(0)} L')),
-              const SizedBox(width: 10),
-              Expanded(child: MetricTile(icon: Icons.report_problem_outlined, label: 'Open incidents', value: '${m.openIncidents}', color: AppColors.coral)),
-              const SizedBox(width: 10),
-              Expanded(child: MetricTile(icon: Icons.description_outlined, label: 'Est. pages avoided', value: '${m.pagesAvoided}', color: AppColors.leaf)),
-            ]),
-          ),
-          const SectionHeading('Recent reports'),
-          if (mine.isEmpty)
-            const Card(child: EmptyState(title: 'Nothing reported yet', message: 'If you notice waste, you can help fix it.'))
-          else
-            for (final i in mine)
-              Card(child: ListTile(title: Text(i.locationName), subtitle: Text(timeAgo(i.reportedAt)), trailing: StatusBadge.status(i.status))),
-          const SectionHeading('One useful action'),
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.tips_and_updates_outlined, color: AppColors.amber),
-              title: Text('Spot a dripping tap?'),
-              subtitle: Text('Report it with an estimated rate — even a slow drip adds up over days.'),
+        child: PageBody(children: [
+          Reveal(
+            child: HeroPanel(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Your campus, a little better.', style: t.headlineSmall?.copyWith(color: pal.onHero)),
+                const SizedBox(height: 6),
+                Text('Spot a leak? Snap it, let AI suggest the details, and confirm. It joins the admin priority queue.',
+                    style: t.bodyMedium?.copyWith(color: pal.onHero.withValues(alpha: 0.8))),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: () => onOpenTab(1),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Report a problem'),
+                  style: FilledButton.styleFrom(backgroundColor: pal.heroAccent, foregroundColor: pal.hero),
+                ),
+              ]),
             ),
           ),
+          const SectionHeading('Campus right now'),
+          Reveal(
+            delay: stagger(1),
+            child: MetricGrid(columns: 3, children: [
+              MetricTile(icon: Icons.water_drop_outlined, label: 'Water lost (est.)', number: m.waterActiveLossLitres,
+                  format: (v) => '${fmtNum(v)} L', tone: Tone.info),
+              MetricTile(icon: Icons.report_problem_outlined, label: 'Open reports', number: m.openIncidents.toDouble(), tone: Tone.danger),
+              MetricTile(icon: Icons.description_outlined, label: 'Pages avoided (est.)', number: m.pagesAvoided.toDouble()),
+            ]),
+          ),
+          const SizedBox(height: 10),
+          const DemoNote(),
+          SectionHeading('Recent reports', trailing: TextButton(onPressed: () => onOpenTab(2), child: const Text('See all'))),
+          if (recent.isEmpty)
+            const AppCard(child: EmptyState(title: 'Nothing reported yet', message: 'If you notice waste, you can help fix it.'))
+          else
+            for (var i = 0; i < recent.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Reveal(
+                  key: ValueKey(recent[i].id),
+                  delay: stagger(i + 2),
+                  child: AppCard(
+                    child: Row(children: [
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(recent[i].locationName, style: t.titleSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text(timeAgo(recent[i].reportedAt), style: t.bodySmall),
+                        ]),
+                      ),
+                      const SizedBox(width: 12),
+                      StatusBadge.status(recent[i].status),
+                    ]),
+                  ),
+                ),
+              ),
         ]),
       ),
     );
