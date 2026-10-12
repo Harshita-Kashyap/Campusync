@@ -1,30 +1,33 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:campusync/main.dart';
+import 'package:campusync/app.dart';
+import 'package:campusync/services/app_repository.dart';
+import 'package:campusync/services/impact_service.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('resolving a water incident drops current loss but keeps history', () async {
+    final repo = AppRepository.seeded();
+    final before = ImpactService.compute(repo).waterActiveLossLitres;
+    await repo.updateIncidentStatus('WA-002', 'resolved');
+    final m = ImpactService.compute(repo);
+    expect(m.waterActiveLossLitres, lessThan(before));
+    expect(m.waterHistoricalLossLitres, greaterThan(m.waterActiveLossLitres));
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  test('invalid status is rejected', () {
+    final repo = AppRepository.seeded();
+    expect(repo.updateIncidentStatus('WA-001', 'bogus'), throwsArgumentError);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  test('empty repository gives zero metrics and empty queue', () {
+    final m = ImpactService.compute(AppRepository());
+    expect(m.excessKwh, 0);
+    expect(m.queue, isEmpty);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('welcome -> admin overview', (tester) async {
+    await tester.pumpWidget(const CampusyncApp());
+    await tester.tap(find.text('Admin view'));
+    await tester.pumpAndSettle();
+    expect(find.text('Campus overview'), findsWidgets);
   });
 }
