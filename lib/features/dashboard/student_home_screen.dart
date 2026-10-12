@@ -25,7 +25,7 @@ class StudentHomeScreen extends StatelessWidget {
           const Text(demoLabel, style: TextStyle(fontSize: 12, color: AppColors.muted)),
           const SizedBox(height: 8),
           SizedBox(
-            height: 130,
+            height: 156,
             child: Row(children: [
               Expanded(child: MetricTile(icon: Icons.water_drop, label: 'Est. water loss (current)', value: '${m.waterActiveLossLitres.toStringAsFixed(0)} L')),
               const SizedBox(width: 10),

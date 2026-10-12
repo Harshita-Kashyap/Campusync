@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import '../data/seed_data.dart';
 import '../models/models.dart';
+import 'energy_service.dart';
 
 /// ONE data-access pattern for all modules: shared in-memory ChangeNotifier.
 /// Use `RepositoryScope.of(context)`. Every mutation notifies listeners.
@@ -9,39 +10,60 @@ class AppRepository extends ChangeNotifier {
   static const energyStatuses = {'active', 'resolved', 'dismissed'};
   static const waterStatuses = {'open', 'in_progress', 'resolved', 'dismissed'};
 
-  final List<EnergyAlert> _energy;
+  /// Energy data is owned by Person 2's EnergyService (singleton). The repository
+  /// exposes it through the shared interface and re-notifies when it changes.
+  final EnergyService _energySvc = EnergyService();
+  Map<String, String> _energySnapshot = {};
+
   final List<WaterIncident> _water;
   final List<DigitalSubmission> _subs;
   final List<SustainabilityRecommendation> _recs = [];
   final List<ActivityEntry> _log = [];
 
-  AppRepository({List<EnergyAlert>? energy, List<WaterIncident>? water, List<DigitalSubmission>? submissions})
-      : _energy = [...?energy],
-        _water = [...?water],
-        _subs = [...?submissions];
+  /// [emptyEnergy] clears the energy service (empty-state demo/tests).
+  AppRepository({List<WaterIncident>? water, List<DigitalSubmission>? submissions, bool emptyEnergy = false, bool resetEnergy = false})
+      : _water = [...?water],
+        _subs = [...?submissions] {
+    if (emptyEnergy) {
+      _energySvc.clearAll();
+    } else if (resetEnergy) {
+      _energySvc.resetToDefaults();
+    }
+    _energySnapshot = {for (final a in _energySvc.getAlerts()) a.id: a.status};
+    _energySvc.addListener(_onEnergyChanged);
+  }
 
   factory AppRepository.seeded() =>
-      AppRepository(energy: SeedData.energy(), water: SeedData.water(), submissions: SeedData.submissions());
+      AppRepository(water: SeedData.water(), submissions: SeedData.submissions(), resetEnergy: true);
+
+  @override
+  void dispose() {
+    _energySvc.removeListener(_onEnergyChanged);
+    super.dispose();
+  }
 
   void _record(String msg) => _log.add(ActivityEntry(DateTime.now(), msg));
 
-  // ---- Energy ----
-  List<EnergyAlert> getAlerts() => List.unmodifiable(_energy);
-  Future<void> addAlert(EnergyAlert a) async {
-    _energy.add(a);
-    _record('Energy alert added: ${a.roomName}');
+  /// Logs energy changes (including those made directly inside EnergyScreen), then notifies.
+  void _onEnergyChanged() {
+    for (final a in _energySvc.getAlerts()) {
+      final prev = _energySnapshot[a.id];
+      if (prev == null) {
+        _record('Energy alert added: ${a.roomName}');
+      } else if (prev != a.status) {
+        _record('${a.roomName} energy alert → ${a.status}');
+      }
+    }
+    _energySnapshot = {for (final a in _energySvc.getAlerts()) a.id: a.status};
     notifyListeners();
   }
 
-  /// Throws ArgumentError on unknown id/status (never silently accepted).
-  Future<void> updateAlertStatus(String id, String status) async {
-    if (!energyStatuses.contains(status)) throw ArgumentError('Invalid energy status: $status');
-    final i = _energy.indexWhere((e) => e.id == id);
-    if (i < 0) throw ArgumentError('Unknown alert id: $id');
-    _energy[i] = _energy[i].copyWith(status: status);
-    _record('${_energy[i].roomName} energy alert → $status');
-    notifyListeners();
-  }
+  // ---- Energy (delegates to EnergyService) ----
+  List<EnergyAlert> getAlerts() => _energySvc.getAlerts();
+  Future<void> addAlert(EnergyAlert a) async => _energySvc.addAlert(a);
+
+  /// Throws ArgumentError on invalid status.
+  Future<void> updateAlertStatus(String id, String status) => _energySvc.updateAlertStatus(id, status);
 
   // ---- Water ----
   List<WaterIncident> getIncidents() => List.unmodifiable(_water);

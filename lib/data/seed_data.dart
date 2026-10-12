@@ -2,21 +2,6 @@ import '../models/models.dart';
 
 /// Offline demo data. Modules may replace with their own fixtures via the repository.
 class SeedData {
-  static List<EnergyAlert> energy() {
-    final now = DateTime.now();
-    return [
-      EnergyAlert(id: 'EN-001', roomName: 'Lab 204', timestamp: now.subtract(const Duration(hours: 3)),
-          actualKwh: 42, expectedKwh: 18, tariffPerKwh: 8.5, co2KgPerKwh: 0.82,
-          reason: 'AC and lights on after hours', status: 'active'),
-      EnergyAlert(id: 'EN-002', roomName: 'Library Hall', timestamp: now.subtract(const Duration(days: 1)),
-          actualKwh: 30, expectedKwh: 26, tariffPerKwh: 8.5, co2KgPerKwh: 0.82,
-          reason: 'Higher than usual evening load', status: 'active'),
-      EnergyAlert(id: 'EN-003', roomName: 'Seminar Room 2', timestamp: now.subtract(const Duration(days: 2)),
-          actualKwh: 15, expectedKwh: 12, tariffPerKwh: 8.5, co2KgPerKwh: 0.82,
-          reason: 'Projector left on', status: 'resolved'),
-    ];
-  }
-
   static List<WaterIncident> water() {
     final now = DateTime.now();
     return [

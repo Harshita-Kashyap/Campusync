@@ -1,0 +1,13 @@
+# Decisions
+- State: shared in-memory `AppRepository` (ChangeNotifier + InheritedNotifier). No new packages.
+- Navigation: role shells with bottom NavigationBar; role switch is demo-only, not security.
+- Water metric: *current* loss = open + in-progress; historical loss (excl. dismissed) shown on Impact screen.
+- Energy metric: active alerts only.
+- Units are never combined into one score.
+- Fonts: system fonts for offline reliability.
+- Recommendations: rule-based fallback in `ImpactService`; Person 4's agent overrides via `setRecommendations()`.
+- `ActivityEntry` is a Person 1 model outside the contract.
+- Energy: owned by Person 2's `EnergyService`; `AppRepository` delegates, listens and logs.
+- Persons 3 and 4 deliver logic only; Person 1 builds all UI.
+- Water photo analysis is optional: offline sample fixture is the default demo path; online path falls back with a visible notice; only `source: "ai"` is labelled AI.
+- No new packages (`dart:io` for HTTP). `image_picker` only if time allows.

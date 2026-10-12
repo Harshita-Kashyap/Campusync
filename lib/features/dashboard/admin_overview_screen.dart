@@ -53,16 +53,28 @@ class AdminOverviewScreen extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Card(
-                  child: ListTile(
-                    minVerticalPadding: 12,
-                    leading: Icon(q.type == 'water' ? Icons.water_drop : Icons.bolt, color: AppColors.forest),
-                    title: Text(q.title),
-                    subtitle: Text('${q.subtitle}\n${timeAgo(q.time)}'),
-                    isThreeLine: true,
-                    trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      StatusBadge.priority(q.priority), const SizedBox(height: 4), StatusBadge.status(q.status),
-                    ]),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
                     onTap: () => _showActions(context, repo, q),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Icon(q.type == 'water' ? Icons.water_drop : Icons.bolt, color: AppColors.forest),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(q.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 2),
+                            Text(q.subtitle, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+                            const SizedBox(height: 2),
+                            Text(timeAgo(q.time), style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                            const SizedBox(height: 8),
+                            Wrap(spacing: 6, runSpacing: 6, children: [StatusBadge.priority(q.priority), StatusBadge.status(q.status)]),
+                          ]),
+                        ),
+                        const Icon(Icons.chevron_right, color: AppColors.muted),
+                      ]),
+                    ),
                   ),
                 ),
               ),
