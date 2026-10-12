@@ -1,19 +1,26 @@
 # Test checklist
-## Core
+
+## Flutter app
 - [ ] Launches on target device; Student and Admin reachable; ⇄ returns to welcome
-- [ ] Student report appears in My activity, admin queue, water list, overview counts
-- [ ] Admin status change refreshes queue, counts, current water loss, Activity log
+- [ ] Student report appears in My activity, admin queue, water list, and overview counts
+- [ ] Photo picker (gallery/camera) preview; photo report uploads to Flask
+- [ ] Admin status change updates queue, counts, current water loss, and Activity log
+- [ ] Water screen indicates whether records/status updates are MySQL-backed or local demo only
 - [ ] Energy metrics match seeded records; zero excess → 0
 - [ ] Submission duplicate (same bytes) flagged and explained
 - [ ] Recommendations show evidence + action
-- [ ] Works offline
+- [ ] Works offline; manual/local fallback is not presented as MySQL-persisted
+
+## Flask + MySQL
+- [ ] `GET /health` returns 200 with MySQL/schema configured
+- [ ] `POST /api/water/incidents` with `image` stores AI/fallback output and image
+- [ ] `POST /api/water/incidents` without image stores a manual report
+- [ ] `GET /api/water/incidents` returns records newest-first
+- [ ] `PATCH /api/water/incidents/<id>/status` accepts valid statuses and rejects invalid ones
+- [ ] Missing/unsupported/oversized images and missing DB configuration return readable JSON errors
+
 ## Validation
-- [ ] Negative rate/duration rejected; missing location/description rejected
-- [ ] Invalid status throws ArgumentError (`flutter test`)
-- [ ] Empty states for queue, activity, my activity, recommendations
-## UI
-- [ ] No overflow warnings at 360 px width and on wide window
-- [ ] Status shown as text + icon; tap targets ≥ 48 px; contrast readable
-- [ ] Demo/estimate label visible on overview, student home, impact
-## Release
-- [ ] `dart format .` · `flutter analyze` · `flutter test` clean
+- [ ] Negative / zero / non-numeric leak rate rejected
+- [ ] Negative duration rejected; zero accepted
+- [ ] Missing location/description rejected on manual reports
+- [ ] Resolved/dismissed incidents are excluded from current loss

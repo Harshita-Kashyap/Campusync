@@ -10,6 +10,10 @@ class DigitalSubmission {
   final String gradingFeedback;
   final int pagesAvoidedEstimate;
   final bool duplicateDetected;
+  /// 'local' = offline demo rules, 'api' = scored by the Flask /api/evaluate service.
+  final String source;
+  /// Plagiarism/similarity metric from the server, in the evaluator's own units.
+  final double? plagiarismScore;
 
   const DigitalSubmission({
     required this.id,
@@ -23,5 +27,7 @@ class DigitalSubmission {
     required this.gradingFeedback,
     required this.pagesAvoidedEstimate,
     required this.duplicateDetected,
+    this.source = 'local',
+    this.plagiarismScore,
   });
 }

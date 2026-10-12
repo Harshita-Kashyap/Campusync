@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../services/app_repository.dart';
+import '../../services/water_api_client.dart';
 import '../../services/impact_service.dart';
 import '../../shared/theme/app_colors.dart';
 import '../../shared/widgets/widgets.dart';
@@ -41,6 +42,25 @@ class AdminOverviewScreen extends StatelessWidget {
                   number: m.pagesAvoided.toDouble(), note: 'Declared, not verified'),
               MetricTile(icon: Icons.task_alt, label: 'Resolved so far', number: m.resolvedItems.toDouble(),
                   note: 'Water and energy', tone: Tone.success),
+            ]),
+          ),
+          const SectionHeading('By area'),
+          Reveal(
+            delay: stagger(2),
+            child: Column(children: [
+              _AreaRow(icon: Icons.bolt_outlined, title: 'Energy', onTap: () => onOpenTab(1),
+                  summary: '${m.activeAlerts} active, ${fmtNum(m.excessKwh, 1)} kWh above baseline',
+                  badge: m.activeAlerts == 0 ? const StatusBadge(label: 'Clear', icon: Icons.check_circle_outline, tone: Tone.success) : StatusBadge.status('active')),
+              const SizedBox(height: 10),
+              _AreaRow(icon: Icons.water_drop_outlined, title: 'Water', onTap: () => onOpenTab(2),
+                  summary: '${m.openIncidents} open, ~${fmtNum(m.waterActiveLossLitres)} L lost (est.)',
+                  badge: m.openIncidents == 0 ? const StatusBadge(label: 'Clear', icon: Icons.check_circle_outline, tone: Tone.success) : StatusBadge.status('open')),
+              const SizedBox(height: 10),
+              _AreaRow(icon: Icons.description_outlined, title: 'Paper', onTap: () => onOpenTab(3),
+                  summary: '${repo.getSubmissions().length} submissions, ~${fmtNum(m.pagesAvoided)} pages avoided (est.)',
+                  badge: repo.getSubmissions().any((s) => s.duplicateDetected)
+                      ? const StatusBadge(label: 'Duplicate', icon: Icons.copy_outlined, tone: Tone.warning)
+                      : const StatusBadge(label: 'All unique', icon: Icons.verified_outlined, tone: Tone.success)),
             ]),
           ),
           const SectionHeading('Priority queue'),
@@ -126,11 +146,18 @@ class AdminOverviewScreen extends StatelessWidget {
             onPick: (s) async {
               Navigator.pop(ctx);
               if (isWater) {
-                await repo.updateIncidentStatus(q.id, s);
+                try {
+                  await WaterApiClient(baseUrl: repo.waterApiBaseUrl).updateStatus(q.id, s);
+                  await repo.updateIncidentStatus(q.id, s);
+                  messenger.showSnackBar(SnackBar(content: Text('${q.title} updated in MySQL: ${prettyStatus(s).toLowerCase()}')));
+                } catch (error) {
+                  await repo.updateIncidentStatus(q.id, s);
+                  messenger.showSnackBar(SnackBar(content: Text('${q.title} updated locally only; MySQL was not confirmed ($error).')));
+                }
               } else {
                 await repo.updateAlertStatus(q.id, s);
+                messenger.showSnackBar(SnackBar(content: Text('${q.title} marked ${prettyStatus(s).toLowerCase()}')));
               }
-              messenger.showSnackBar(SnackBar(content: Text('${q.title} marked ${prettyStatus(s).toLowerCase()}')));
             },
           ),
         ]);
@@ -253,6 +280,40 @@ class _RecCard extends StatelessWidget {
         ]),
         const SizedBox(height: 12),
         rec.isAiGenerated ? StatusBadge.source('ai') : StatusBadge.rules(),
+      ]),
+    );
+  }
+}
+
+class _AreaRow extends StatelessWidget {
+  final IconData icon;
+  final String title, summary;
+  final Widget badge;
+  final VoidCallback onTap;
+  const _AreaRow({required this.icon, required this.title, required this.summary, required this.badge, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = context.pal;
+    final t = Theme.of(context).textTheme;
+    return AppCard(
+      onTap: onTap,
+      child: Row(children: [
+        Container(
+          width: 40, height: 40,
+          decoration: BoxDecoration(color: pal.brandSoft, borderRadius: BorderRadius.circular(13)),
+          child: Icon(icon, color: pal.ink),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: t.titleSmall),
+            Text(summary, style: t.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+          ]),
+        ),
+        const SizedBox(width: 8),
+        badge,
+        Icon(Icons.chevron_right, color: pal.muted),
       ]),
     );
   }

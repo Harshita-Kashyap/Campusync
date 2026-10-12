@@ -41,6 +41,8 @@ class StatusBadge extends StatelessWidget {
         return const StatusBadge(label: 'Saved sample, not live AI', icon: Icons.science_outlined, tone: Tone.warning);
       case 'fallback':
         return const StatusBadge(label: 'Fallback estimate', icon: Icons.science_outlined, tone: Tone.warning);
+      case 'manual':
+        return const StatusBadge(label: 'Manual report', icon: Icons.edit_outlined, tone: Tone.neutral);
       default:
         return const StatusBadge(label: 'Unverified source', icon: Icons.help_outline, tone: Tone.neutral);
     }

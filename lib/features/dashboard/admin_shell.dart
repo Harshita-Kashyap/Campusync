@@ -21,7 +21,7 @@ class _AdminShellState extends State<AdminShell> {
         body: FadeIndexedStack(index: _i, children: [
           AdminOverviewScreen(onOpenTab: (t) => setState(() => _i = t)),
           const EnergyScreen(),
-          const WaterScreen(),
+          WaterScreen(isActive: _i == 2),
           const SubmissionsScreen(),
           const ActivityScreen(),
         ]),

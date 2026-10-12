@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import '../data/seed_data.dart';
 import '../models/models.dart';
 import 'energy_service.dart';
+import 'water_api_client.dart';
 
 /// ONE data-access pattern for all modules: shared in-memory ChangeNotifier.
 /// Use `RepositoryScope.of(context)`. Every mutation notifies listeners.
@@ -19,6 +20,17 @@ class AppRepository extends ChangeNotifier {
   final List<DigitalSubmission> _subs;
   final List<SustainabilityRecommendation> _recs = [];
   final List<ActivityEntry> _log = [];
+  String _waterApiBaseUrl = WaterApiClient.defaultBaseUrl;
+
+  String get waterApiBaseUrl => _waterApiBaseUrl;
+
+  /// Share the server address across the student report and admin workflows.
+  void setWaterApiBaseUrl(String value) {
+    final normalized = value.trim();
+    if (normalized.isEmpty || normalized == _waterApiBaseUrl) return;
+    _waterApiBaseUrl = normalized;
+    notifyListeners();
+  }
 
   /// [emptyEnergy] clears the energy service (empty-state demo/tests).
   AppRepository({List<WaterIncident>? water, List<DigitalSubmission>? submissions, bool emptyEnergy = false, bool resetEnergy = false})
@@ -67,6 +79,29 @@ class AppRepository extends ChangeNotifier {
 
   // ---- Water ----
   List<WaterIncident> getIncidents() => List.unmodifiable(_water);
+
+  /// Replace the local/demo water snapshot with the records returned by Flask.
+  /// A successful empty response is meaningful: it clears the seeded demo list.
+  void replaceWaterIncidents(List<WaterIncident> incidents) {
+    _water
+      ..clear()
+      ..addAll(incidents);
+    notifyListeners();
+  }
+
+  /// Insert/update a server-created incident in the shared app state.
+  Future<void> upsertWaterIncident(WaterIncident incident) async {
+    final index = _water.indexWhere((item) => item.id == incident.id);
+    if (index == -1) {
+      _water.add(incident);
+      _record('Water incident reported: ${incident.locationName}');
+    } else {
+      _water[index] = incident;
+      _record('${incident.locationName} water incident refreshed');
+    }
+    notifyListeners();
+  }
+
   Future<void> addIncident(WaterIncident i) async {
     _water.add(i);
     _record('Water incident reported: ${i.locationName}');

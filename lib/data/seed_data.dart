@@ -7,10 +7,10 @@ class SeedData {
     return [
       WaterIncident(id: 'WA-001', locationName: 'Hostel B washroom', issueType: 'leaking_tap',
           estimatedLitresPerHour: 6, reportedAt: now.subtract(const Duration(hours: 10)),
-          estimatedDurationHours: 10, severity: 'medium', description: 'Dripping tap', status: 'open'),
+          estimatedDurationHours: 10, severity: 'medium', description: 'Dripping tap', status: 'open', source: 'sample'),
       WaterIncident(id: 'WA-002', locationName: 'Main block overhead tank', issueType: 'overflow',
           estimatedLitresPerHour: 120, reportedAt: now.subtract(const Duration(hours: 4)),
-          estimatedDurationHours: 4, severity: 'high', description: 'Tank overflowing', status: 'in_progress'),
+          estimatedDurationHours: 4, severity: 'high', description: 'Tank overflowing', status: 'in_progress', source: 'sample'),
     ];
   }
 

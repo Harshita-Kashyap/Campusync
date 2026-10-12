@@ -26,15 +26,23 @@ class StudentHomeScreen extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Your campus, a little better.', style: t.headlineSmall?.copyWith(color: pal.onHero)),
                 const SizedBox(height: 6),
-                Text('Spot a leak? Snap it, let AI suggest the details, and confirm. It joins the admin priority queue.',
+                Text('Report a leak with an AI-assisted photo estimate, or hand in work digitally and save paper.',
                     style: t.bodyMedium?.copyWith(color: pal.onHero.withValues(alpha: 0.8))),
                 const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: () => onOpenTab(1),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Report a problem'),
-                  style: FilledButton.styleFrom(backgroundColor: pal.heroAccent, foregroundColor: pal.hero),
-                ),
+                Wrap(spacing: 10, runSpacing: 10, children: [
+                  FilledButton.icon(
+                    onPressed: () => onOpenTab(1),
+                    icon: const Icon(Icons.water_drop_outlined),
+                    label: const Text('Report a leak'),
+                    style: FilledButton.styleFrom(backgroundColor: pal.heroAccent, foregroundColor: pal.hero),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => onOpenTab(2),
+                    icon: const Icon(Icons.upload_file),
+                    label: const Text('Submit assignment'),
+                    style: OutlinedButton.styleFrom(foregroundColor: pal.onHero, side: BorderSide(color: pal.onHero.withValues(alpha: 0.4))),
+                  ),
+                ]),
               ]),
             ),
           ),
@@ -50,7 +58,7 @@ class StudentHomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           const DemoNote(),
-          SectionHeading('Recent reports', trailing: TextButton(onPressed: () => onOpenTab(2), child: const Text('See all'))),
+          SectionHeading('Recent reports', trailing: TextButton(onPressed: () => onOpenTab(3), child: const Text('See all'))),
           if (recent.isEmpty)
             const AppCard(child: EmptyState(title: 'Nothing reported yet', message: 'If you notice waste, you can help fix it.'))
           else

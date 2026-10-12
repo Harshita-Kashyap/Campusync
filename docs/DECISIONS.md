@@ -1,5 +1,5 @@
 # Decisions
-- State: shared in-memory `AppRepository` (ChangeNotifier + InheritedNotifier). No new packages.
+- State: shared `AppRepository` (ChangeNotifier + InheritedNotifier); the water API syncs persisted records while retaining a local demo path.
 - Navigation: role shells with bottom NavigationBar; role switch is demo-only, not security.
 - Water metric: *current* loss = open + in-progress; historical loss (excl. dismissed) shown on Impact screen.
 - Energy metric: active alerts only.
@@ -9,5 +9,5 @@
 - `ActivityEntry` is a Person 1 model outside the contract.
 - Energy: owned by Person 2's `EnergyService`; `AppRepository` delegates, listens and logs.
 - Persons 3 and 4 deliver logic only; Person 1 builds all UI.
-- Water photo analysis is optional: offline sample fixture is the default demo path; online path falls back with a visible notice; only `source: "ai"` is labelled AI.
-- No new packages (`dart:io` for HTTP). `image_picker` only if time allows.
+- Water photo analysis is optional: the photo is uploaded to Flask for Gemini analysis and MySQL persistence; the saved sample is labelled non-AI when used offline; only `source: "ai"` is labelled AI.
+- Flutter uses `http` for multipart/JSON API requests and `image_picker` for camera/gallery input. Backend secrets stay in `backend/.env`, never in Flutter.

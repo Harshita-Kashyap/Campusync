@@ -19,9 +19,10 @@
 > Change from the original plan: Persons 3 and 4 are not writing Flutter. Person 1 builds the water and submissions **screens**, and plugs their logic into `water_service.dart` / `submission_service.dart`.
 
 ## 2. Architecture
-- **State:** one in-memory `AppRepository` (`ChangeNotifier` + `RepositoryScope` InheritedNotifier). No extra packages.
+- **State:** shared `AppRepository` (`ChangeNotifier` + `RepositoryScope` InheritedNotifier); water records are synced from Flask/MySQL when configured, with clearly labelled in-memory demo fallback.
 - **Energy** is owned by Person 2's singleton `EnergyService`; `AppRepository` delegates to it, listens to it, and logs its changes (so changes made inside the Energy screen still refresh the dashboard).
-- **Water / submissions** data lives in `AppRepository`. `WaterService` wraps it (validation, rates, analyzer).
+- **Water** uses `WaterService` for validation/rates and `WaterApiClient` for multipart uploads, MySQL list refresh, and repair-status updates. Flask performs Gemini analysis and stores uploaded images + incidents.
+- **Submissions** data remains in `AppRepository` pending Person 4's service.
 - **Aggregation:** `ImpactService.compute(repo)` → `ImpactMetrics` (metrics, priority queue, recommendations). Widgets never hardcode metrics.
 - **Navigation:** welcome (demo role pick) → **Student shell** (Home · Report · My activity · Impact) or **Admin shell** (Overview · Energy · Water · Submissions · Activity). Role switch (⇄) is demo-only, not security.
 - **Recommendations:** rule-based fallback in `ImpactService`; Person 4's agent may override with `repo.setRecommendations(list)` (never call it inside `build()`).
@@ -29,13 +30,16 @@
 
 ## 3. Project structure
 ```
+backend/
+  app.py                                    Flask + Gemini + MySQL water API
+  schema.sql, requirements.txt, .env.example
 lib/
   main.dart, app.dart                      routes: / , /admin , /student
   models/            energy_alert, water_incident, digital_submission,
                      sustainability_recommendation, activity_entry (P1),
                      room_reading, timetable_schedule (P2)
   services/          app_repository, impact_service, energy_service (P2),
-                     water_service (P1)   [submission_service, sustainability_agent: TODO]
+                     water_service, water_api_client   [submission_service, sustainability_agent: TODO]
   data/seed_data.dart                      water + submissions fixtures (energy comes from P2)
   shared/theme/      app_colors, app_theme
   shared/widgets/    metric_tile, status_badge, empty_state, section_heading,
@@ -49,7 +53,7 @@ lib/
     submissions/     PLACEHOLDER (SubmissionsScreen)
     activity/        activity_screen (admin log), my_activity_screen (student)
     impact/          impact_screen (methodology)
-assets/images/sample_leak.png              bundled demo photo (declare in pubspec!)
+assets/images/sample_leak.png              bundled demo photo (declared in pubspec)
 test/                widget_test, energy_service_test (P2), water_service_test
 docs/                PROJECT_CONTEXT, DEMO_SCRIPT, TEST_CHECKLIST, DECISIONS,
                      WATER_INTEGRATION, person2/
@@ -71,34 +75,33 @@ Issue types: `leaking_tap|overflow|pipe_leak|other`. Severity: `low|medium|high|
 2. Read the full development plan; reworked to match: demo role switch, Student/Admin shells, "Field Notes" theme, priority queue with status actions, Activity log, Impact/methodology screen, water "current vs historical" rule, status validation.
 3. Analyzer issues fixed (unused import, `withOpacity`, stale test); a RenderFlex overflow in the queue rows fixed by replacing `ListTile` with a card layout; docs and tests added.
 4. Team split clarified; Person 2's standalone `campusai` project integrated: models/service/screens copied, repository now delegates to `EnergyService` (+ one additive `clearAll()` method), log/notify wiring added.
-5. Person 3 shared `analyzeLeak.py` + `image.png`; reviewed and found problems (§7). Built water report form, admin water list, `water_service.dart` (offline fixture / online / fallback analyzer) and tests.
-6. An early Claude Doc skeleton of teammate deliverables was **deleted** because it assumed everyone writes Flutter.
+5. Person 3 shared the Gemini analysis snippet; its output/model/fallback concerns are documented below. Built water report form, admin water list, `water_service.dart` and water tests.
+6. Added `backend/app.py` (Flask + Gemini + MySQL), schema/environment examples, file-upload and incident/status endpoints; connected the Flutter photo/manual form and admin queue through `WaterApiClient`.
+7. An early Claude Doc skeleton of teammate deliverables was **deleted** because it assumed everyone writes Flutter.
 
 ## 7. Open items by person
-**Person 3 must fix/send**
-- `analyzeLeak.py`: `except` indentation is a syntax error; remove the top-level `print(...)` call; return a dict (not a JSON string).
-- Output must be lowercase `severity`, `issueType` ∈ the 4 allowed values, plus `"source": "ai"|"fallback"` (the canned 1500 L/h result must never look like AI).
-- Confirm the Gemini model name (`gemini-3.8-flash` is suspect — a wrong name silently triggers the fallback).
-- Flask/FastAPI wrapper: `POST /analyze` (multipart field `image`), `GET /health`, listen on `0.0.0.0`, state the port.
-- `requirements.txt`, `.env.example` (no secrets), 4+ sample outputs, typical-rate/severity rules.
-- **Never share `.env` or `venv`; rotate the key if it was exposed.**
+**Water backend follow-up**
+- The supplied analysis flow is now in `backend/app.py`; it returns a labelled `fallback` result on errors and never exposes the Gemini key to Flutter.
+- `gemini-3.8-flash` is listed as a stable Gemini model in Google's current model documentation; verify that the team's API key has access, and change `GEMINI_MODEL` only if needed: https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash
+- Set MySQL credentials, create the schema with `backend/schema.sql`, run the Flask service, then test `GET /health`, photo upload, list, and status update.
+- **Never share `.env` or `venv`; rotate the key if it was exposed.** The demo API currently has no authentication.
 
 **Person 4 must send:** SHA-256 duplicate-check logic, grading rules (labelled prototype), recommendation rules (evidence + action + priority; `isAiGenerated=false` for rules), fixtures. Person 1 then builds `SubmissionsScreen`, `submission_service.dart` and wires `setRecommendations`.
 
 **Person 2:** keep the `clearAll()` addition when updating `energy_service.dart`.
 
 ## 8. Remaining work for Person 1
-- [ ] Re-run `flutter pub get`, `dart format .`, `flutter analyze`, `flutter test`; fix anything it reports (nothing has been compiled by the assistant).
-- [ ] Add `assets/images/sample_leak.png` to `pubspec.yaml`.
+- [ ] Run `flutter pub get`, `dart format .`, `flutter analyze`, and `flutter test` in a Flutter SDK environment; fix anything reported (Flutter/Dart CLI is not available in the current workspace).
+- [x] Declare `assets/images/sample_leak.png` and add image picker + HTTP client dependencies.
+- [ ] Configure `backend/.env`, initialize MySQL, and verify the backend endpoints against a live database/Gemini key.
+- [x] Add Flask/MySQL water API integration, upload UI, admin refresh, and remote status updates.
 - [ ] Submissions UI + service once Person 4's logic arrives; agent → `setRecommendations`.
-- [ ] Wire Person 3's real server (or keep the offline sample photo for the demo).
-- [ ] Optional: role-switch button on the Energy tab; `image_picker` for real photos; persistence; filters/trends.
+- [ ] Full offline run of `DEMO_SCRIPT.md`; tick `TEST_CHECKLIST.md`; screenshots + 60 s backup video; commit/push, invite team, PR per module.
 - [ ] Full offline run of `DEMO_SCRIPT.md`; tick `TEST_CHECKLIST.md`; screenshots + 60 s backup video; commit/push, invite team, PR per module.
 - [ ] Feature freeze 45 min before the deadline (confirm 6 h vs 8 h window with organizers).
 
 ## 9. Known limitations
-No persistence; online photo analysis always sends the bundled sample image and uses `dart:io` (not web); typical water rates (5/120/300/10 L/h) are assumptions; submissions module is a placeholder; code has not been compiled by the assistant.
+Water persistence requires a running Flask/MySQL service; without it, the app uses clearly labelled in-memory demo data. Gemini/model availability and the live MySQL connection have not been verified here; typical manual water rates (5/120/300/10 L/h) are assumptions. The demo API has no authentication, submissions remains a placeholder, and Flutter/Dart checks could not run because the SDK is not available in this workspace.
 
 ## 10. Run
-`flutter pub get` → `flutter run` (offline) → `flutter analyze` → `flutter test`.
-Android emulator reaches a laptop server at `http://10.0.2.2:<port>`; a real phone needs the laptop's LAN IP.
+Flutter: `flutter pub get` → `flutter run` → `flutter analyze` → `flutter test`. Backend: install `backend/requirements.txt`, copy `backend/.env.example` to `.env`, create MySQL schema with `backend/schema.sql`, then run `python backend/app.py`. Android emulator reaches the host at `http://10.0.2.2:5000`, desktop/web uses `http://127.0.0.1:5000`, and a real phone needs the computer's LAN IP.

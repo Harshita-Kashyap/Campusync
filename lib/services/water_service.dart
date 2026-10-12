@@ -1,7 +1,3 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'package:flutter/services.dart' show rootBundle;
 import '../models/models.dart';
 import 'app_repository.dart';
 
@@ -10,48 +6,58 @@ const waterSeverities = ['low', 'medium', 'high', 'critical'];
 
 String labelOf(String v) => v.replaceAll('_', ' ');
 
-/// Normalised result of a photo analysis. [source]: ai | fallback | sample | unknown.
-/// Only source == 'ai' may ever be presented as AI.
+/// Normalized result of a photo analysis. Only source == 'ai' may be presented as AI.
 class LeakAnalysisResult {
   final String issueType, severity, description, source;
   final double estimatedLitresPerHour;
+
   const LeakAnalysisResult({
-    required this.issueType, required this.severity, required this.estimatedLitresPerHour,
-    required this.description, required this.source,
+    required this.issueType,
+    required this.severity,
+    required this.estimatedLitresPerHour,
+    required this.description,
+    required this.source,
   });
 
   bool get isAi => source == 'ai';
 
-  String get label => isAi
-      ? 'AI-generated estimate, please confirm'
-      : (source == 'unknown'
-          ? 'Estimate from an unverified source, please confirm'
-          : 'Sample estimate (not live AI), please confirm');
+  String get label => switch (source) {
+        'ai' => 'AI-generated estimate, please confirm',
+        'fallback' => 'Fallback estimate, please confirm',
+        'sample' => 'Saved sample estimate (not live AI), please confirm',
+        'manual' => 'Manually entered estimate',
+        _ => 'Estimate from an unverified source, please confirm',
+      };
 
-  /// Tolerant parser: also copes with the un-fixed script output
-  /// ("Critical", free-text issue type).
-  factory LeakAnalysisResult.fromJson(Map<String, dynamic> j) {
-    var lph = (j['estimatedLitresPerHour'] as num?)?.toDouble() ?? 0.0;
-    if (!lph.isFinite || lph < 0) lph = 0;
-    var sev = (j['severity'] ?? '').toString().toLowerCase().trim();
-    if (!waterSeverities.contains(sev)) sev = WaterService.suggestSeverity(lph);
-    final rawType = (j['issueType'] ?? '').toString().toLowerCase().trim();
-    final desc = (j['description'] ?? '').toString().trim();
-    var type = 'other';
+  /// Tolerant parser for Gemini output and the API's normalized response.
+  factory LeakAnalysisResult.fromJson(Map<String, dynamic> json) {
+    var litresPerHour = (json['estimatedLitresPerHour'] as num?)?.toDouble() ?? 0;
+    if (!litresPerHour.isFinite || litresPerHour < 0) litresPerHour = 0;
+
+    var severity = (json['severity'] ?? '').toString().toLowerCase().trim();
+    if (!waterSeverities.contains(severity)) severity = WaterService.suggestSeverity(litresPerHour);
+
+    final rawType = (json['issueType'] ?? '').toString().toLowerCase().trim();
+    var issueType = 'other';
     if (waterIssueTypes.contains(rawType)) {
-      type = rawType;
-    } else if (rawType.contains('tap') || rawType.contains('drip')) {
-      type = 'leaking_tap';
+      issueType = rawType;
+    } else if (rawType.contains('tap') || rawType.contains('drip') || rawType.contains('faucet')) {
+      issueType = 'leaking_tap';
     } else if (rawType.contains('overflow')) {
-      type = 'overflow';
-    } else if (rawType.contains('pipe') || rawType.contains('coupling') || rawType.contains('joint')) {
-      type = 'pipe_leak';
+      issueType = 'overflow';
+    } else if (rawType.contains('pipe') || rawType.contains('coupling') || rawType.contains('joint') || rawType.contains('spray')) {
+      issueType = 'pipe_leak';
     }
-    final src = (j['source'] ?? '').toString().toLowerCase().trim();
+
+    final rawDescription = (json['description'] ?? '').toString().trim();
+    final rawSource = (json['source'] ?? '').toString().toLowerCase().trim();
+    final source = const {'ai', 'fallback', 'sample', 'manual'}.contains(rawSource) ? rawSource : 'unknown';
     return LeakAnalysisResult(
-      issueType: type, severity: sev, estimatedLitresPerHour: lph,
-      description: desc.isEmpty && rawType.isNotEmpty ? j['issueType'].toString() : desc,
-      source: const {'ai', 'fallback', 'sample'}.contains(src) ? src : 'unknown',
+      issueType: issueType,
+      severity: severity,
+      estimatedLitresPerHour: litresPerHour,
+      description: rawDescription.isEmpty && rawType.isNotEmpty ? json['issueType'].toString() : rawDescription,
+      source: source,
     );
   }
 }
@@ -60,136 +66,124 @@ abstract class LeakAnalyzer {
   Future<LeakAnalysisResult> analyze();
 }
 
-/// Offline demo path: saved result for the bundled sample photo. Needs no network or packages.
+/// Offline demo path: saved result for the bundled sample photo. No network needed.
 class FixtureLeakAnalyzer implements LeakAnalyzer {
   static const assetPath = 'assets/images/sample_leak.png';
   const FixtureLeakAnalyzer();
+
   @override
   Future<LeakAnalysisResult> analyze() async => const LeakAnalysisResult(
-        issueType: 'pipe_leak', severity: 'critical', estimatedLitresPerHour: 1500,
+        issueType: 'pipe_leak',
+        severity: 'critical',
+        estimatedLitresPerHour: 1500,
         description: 'High-pressure water spraying in several jets from a damaged pipe coupling.',
         source: 'sample',
       );
 }
 
-/// Online path: posts the bundled sample photo to Person 3's server (POST {baseUrl}/analyze,
-/// multipart field "image"). Uses dart:io only — no extra packages (not available on Flutter web).
-class HttpLeakAnalyzer implements LeakAnalyzer {
-  final String baseUrl;
-  final Duration timeout;
-  const HttpLeakAnalyzer(this.baseUrl, {this.timeout = const Duration(seconds: 8)});
-
-  @override
-  Future<LeakAnalysisResult> analyze() async {
-    final bytes = (await rootBundle.load(FixtureLeakAnalyzer.assetPath)).buffer.asUint8List();
-    final boundary = '----campusync${DateTime.now().microsecondsSinceEpoch}';
-    final head = utf8.encode('--$boundary\r\nContent-Disposition: form-data; name="image"; '
-        'filename="sample_leak.png"\r\nContent-Type: image/png\r\n\r\n');
-    final tail = utf8.encode('\r\n--$boundary--\r\n');
-    final client = HttpClient()..connectionTimeout = timeout;
-    try {
-      final req = await client.postUrl(Uri.parse('${baseUrl.replaceAll(RegExp(r'/+$'), '')}/analyze')).timeout(timeout);
-      req.headers.set(HttpHeaders.contentTypeHeader, 'multipart/form-data; boundary=$boundary');
-      req.contentLength = head.length + bytes.length + tail.length;
-      req.add(head);
-      req.add(bytes);
-      req.add(tail);
-      final res = await req.close().timeout(timeout);
-      final body = await res.transform(utf8.decoder).join().timeout(timeout);
-      if (res.statusCode != 200) throw HttpException('Server returned ${res.statusCode}');
-      dynamic decoded = jsonDecode(body);
-      if (decoded is String) decoded = jsonDecode(decoded);
-      return LeakAnalysisResult.fromJson(Map<String, dynamic>.from(decoded as Map));
-    } finally {
-      client.close(force: true);
-    }
-  }
-}
-
 class AnalysisOutcome {
   final LeakAnalysisResult result;
-  final String? notice; // set when we fell back
+  final String? notice;
   const AnalysisOutcome(this.result, [this.notice]);
 }
 
-/// Water logic + contract methods. UI never computes; it calls this.
+/// Water logic and validation. Remote operations are handled by WaterApiClient.
 class WaterService {
   final AppRepository repo;
   const WaterService(this.repo);
 
-  /// Typical rates used only to SUGGEST a value (assumption, always editable).
-  static const defaultRates = {'leaking_tap': 5.0, 'overflow': 120.0, 'pipe_leak': 300.0, 'other': 10.0};
+  /// Typical rates used only to suggest a value; they are assumptions, not measurements.
+  static const defaultRates = {
+    'leaking_tap': 5.0,
+    'overflow': 120.0,
+    'pipe_leak': 300.0,
+    'other': 10.0,
+  };
   static double defaultRateFor(String type) => defaultRates[type] ?? 10.0;
 
-  static String suggestSeverity(double lph) =>
-      lph < 10 ? 'low' : (lph < 100 ? 'medium' : (lph < 500 ? 'high' : 'critical'));
+  static String suggestSeverity(double litresPerHour) =>
+      litresPerHour < 10 ? 'low' : (litresPerHour < 100 ? 'medium' : (litresPerHour < 500 ? 'high' : 'critical'));
 
-  // ---- validators (return error text or null) ----
-  static String? validateRequired(String? v, String what) =>
-      (v == null || v.trim().isEmpty) ? '$what is required' : null;
+  static String? validateRequired(String? value, String what) =>
+      (value == null || value.trim().isEmpty) ? '$what is required' : null;
 
-  static String? validateDescription(String? v) {
-    final r = validateRequired(v, 'Description');
-    if (r != null) return r;
-    return v!.trim().length > 200 ? 'Keep it under 200 characters' : null;
+  static String? validateDescription(String? value) {
+    final requiredError = validateRequired(value, 'Description');
+    if (requiredError != null) return requiredError;
+    return value!.trim().length > 200 ? 'Keep it under 200 characters' : null;
   }
 
-  static String? validateRate(String? v) {
-    if (v == null || v.trim().isEmpty) return 'Required';
-    final n = double.tryParse(v.trim());
-    if (n == null || !n.isFinite) return 'Enter a number';
-    if (n < 0) return 'Cannot be negative';
-    if (n == 0) return 'Enter a positive rate for a leak';
+  static String? validateRate(String? value) {
+    if (value == null || value.trim().isEmpty) return 'Required';
+    final number = double.tryParse(value.trim());
+    if (number == null || !number.isFinite) return 'Enter a number';
+    if (number < 0) return 'Cannot be negative';
+    if (number == 0) return 'Enter a positive rate for a leak';
     return null;
   }
 
-  static String? validateDuration(String? v) {
-    if (v == null || v.trim().isEmpty) return 'Required';
-    final n = double.tryParse(v.trim());
-    if (n == null || !n.isFinite) return 'Enter a number';
-    if (n < 0) return 'Cannot be negative';
-    if (n > 8760) return 'Max 8760 hours (1 year)';
+  static String? validateDuration(String? value) {
+    if (value == null || value.trim().isEmpty) return 'Required';
+    final number = double.tryParse(value.trim());
+    if (number == null || !number.isFinite) return 'Enter a number';
+    if (number < 0) return 'Cannot be negative';
+    if (number > 8760) return 'Max 8760 hours (1 year)';
     return null;
   }
 
-  // ---- contract methods ----
   List<WaterIncident> getIncidents() => repo.getIncidents();
-  Future<void> addIncident(WaterIncident i) => repo.addIncident(i);
+  Future<void> addIncident(WaterIncident incident) => repo.addIncident(incident);
   Future<void> updateIncidentStatus(String id, String status) => repo.updateIncidentStatus(id, status);
 
-  /// CURRENT estimated loss: open + in_progress only (matches dashboard definition).
+  /// Current estimated loss: open + in-progress incidents only.
   double getEstimatedWaterLossLitres() => repo
       .getIncidents()
-      .where((i) => i.status == 'open' || i.status == 'in_progress')
-      .fold(0.0, (s, i) => s + i.estimatedLitresLost);
+      .where((incident) => incident.status == 'open' || incident.status == 'in_progress')
+      .fold(0.0, (sum, incident) => sum + incident.estimatedLitresLost);
 
-  /// Validates again (defence in depth), builds a stable-ID incident and stores it.
+  /// Create a local/demo incident. The caller should use WaterApiClient for MySQL persistence.
   Future<WaterIncident> submitReport({
-    required String location, required String issueType, required String severity,
-    required double litresPerHour, required double durationHours, required String description,
+    required String location,
+    required String issueType,
+    required String severity,
+    required double litresPerHour,
+    required double durationHours,
+    required String description,
+    String source = 'manual',
+    String? imageUrl,
   }) async {
-    if (location.trim().isEmpty || description.trim().isEmpty) throw ArgumentError('Location and description are required');
+    if (location.trim().isEmpty || description.trim().isEmpty) {
+      throw ArgumentError('Location and description are required');
+    }
     if (!waterIssueTypes.contains(issueType)) throw ArgumentError('Invalid issue type: $issueType');
     if (!waterSeverities.contains(severity)) throw ArgumentError('Invalid severity: $severity');
     if (!litresPerHour.isFinite || litresPerHour <= 0) throw ArgumentError('Litres per hour must be positive');
     if (!durationHours.isFinite || durationHours < 0) throw ArgumentError('Duration cannot be negative');
     final now = DateTime.now();
     final incident = WaterIncident(
-      id: 'WA-${now.microsecondsSinceEpoch}', locationName: location.trim(), issueType: issueType,
-      estimatedLitresPerHour: litresPerHour, reportedAt: now, estimatedDurationHours: durationHours,
-      severity: severity, description: description.trim(), status: 'open',
+      id: 'WA-${now.microsecondsSinceEpoch}',
+      locationName: location.trim(),
+      issueType: issueType,
+      estimatedLitresPerHour: litresPerHour,
+      reportedAt: now,
+      estimatedDurationHours: durationHours,
+      severity: severity,
+      description: description.trim(),
+      status: 'open',
+      source: source,
+      imageUrl: imageUrl,
     );
     await repo.addIncident(incident);
     return incident;
   }
 
-  /// Try [online]; on ANY error/timeout fall back to the offline fixture with a clear notice.
-  static Future<AnalysisOutcome> analyze(LeakAnalyzer online) async {
+  /// Utility for any optional analyzer used by offline/demo flows.
+  static Future<AnalysisOutcome> analyze(LeakAnalyzer analyzer) async {
     try {
-      return AnalysisOutcome(await online.analyze());
-    } catch (e) {
-      final r = await const FixtureLeakAnalyzer().analyze();
-      return AnalysisOutcome(r, 'Could not reach the AI server, so a saved sample estimate was used instead.');
+      return AnalysisOutcome(await analyzer.analyze());
+    } catch (_) {
+      final result = await const FixtureLeakAnalyzer().analyze();
+      return AnalysisOutcome(result, 'Could not reach the analysis service; a saved sample result was used instead.');
     }
   }
 }

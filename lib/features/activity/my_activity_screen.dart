@@ -32,7 +32,7 @@ class MyActivityScreen extends StatelessWidget {
                           Expanded(
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               Text(inc[i].locationName, style: t.titleSmall),
-                              Text(inc[i].description, style: t.bodyMedium, maxLines: 2, overflow: TextOverflow.ellipsis),
+                              Text(plainDescription(inc[i].description), style: t.bodyMedium, maxLines: 2, overflow: TextOverflow.ellipsis),
                               const SizedBox(height: 4),
                               Text('~${fmtNum(inc[i].estimatedLitresLost)} L (estimate), ${timeAgo(inc[i].reportedAt)}', style: t.bodySmall),
                             ]),
